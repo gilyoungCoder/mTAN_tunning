@@ -6,7 +6,9 @@ import torch.optim as optim
 import random
 import time
 from random import SystemRandom
-from sklearn.model_selection import ParameterSampler
+from skopt import gp_minimize
+from skopt.space import Real, Integer, Categorical
+from skopt.utils import use_named_args
 import models
 import utils
 from setmodels import *
@@ -14,7 +16,6 @@ from setmodels import *
 
 def main(args):
     experiment_id = int(SystemRandom().random() * 100000)
-    # print(args, experiment_id)
     seed = args.seed
     torch.manual_seed(seed)
     np.random.seed(seed)
@@ -29,7 +30,6 @@ def main(args):
     val_loader = data_obj["val_dataloader"]
     dim = data_obj["input_dim"]
     num_tp = data_obj["num_tp"]
-    # print(f"num tp : {num_tp}")
 
     rec = models.enc_mtan_rnn(
         dim, torch.linspace(0, 1., args.num_ref_points), args.latent_dim, args.rec_hidden, 
@@ -44,7 +44,6 @@ def main(args):
     aug = models.TimeSeriesAugmentation(dim*2+1, args.augh1, args.augh2, dim*2+1, num_outputs=args.aug_ratio*num_tp).to(device)
     
     params = (list(rec.parameters()) + list(dec.parameters()) + list(classifier.parameters()) + list(aug.parameters()))
-    # print('parameters:', utils.count_parameters(rec), utils.count_parameters(dec), utils.count_parameters(classifier), utils.count_parameters(aug))
     optimizer = optim.Adam(params, lr=args.lr)
     criterion = nn.CrossEntropyLoss()
     
@@ -53,7 +52,6 @@ def main(args):
         rec.load_state_dict(checkpoint['rec_state_dict'])
         dec.load_state_dict(checkpoint['dec_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        # print('loading saved weights', checkpoint['epoch'])
 
     best_val_loss = float('inf')
     best_test_auc = 0
@@ -135,7 +133,6 @@ def main(args):
         
         if val_loss <= best_val_loss:
             best_val_loss = min(best_val_loss, val_loss)
-            # best_test_auc = test_auc
             rec_state_dict = rec.state_dict()
             dec_state_dict = dec.state_dict()
             classifier_state_dict = classifier.state_dict()
@@ -144,21 +141,18 @@ def main(args):
             best_val_auc = val_auc
             best_test_auc = test_auc
         cur_reg_loss = args.beta * train_reg_loss / train_n
-        # print('Iter: {}, recon_loss: {:.4f}, ce_loss: {:.4f}, reg_loss: {:.4f}, acc: {:.4f}, mse: {:.4f}, val_loss: {:.4f}, val_acc: {:.4f}, test_acc: {:.4f}, test_auc: {:.4f}'
-        #       .format(itr, train_recon_loss / train_n, args.alpha * train_ce_loss / train_n, cur_reg_loss,
-        #               train_acc / train_n, mse / train_n, val_loss, val_acc, test_acc, test_auc))
+        print('Iter: {}, recon_loss: {:.4f}, ce_loss: {:.4f}, reg_loss: {:.4f}, acc: {:.4f}, mse: {:.4f}, val_loss: {:.4f}, val_acc: {:.4f}, test_acc: {:.4f}, test_auc: {:.4f}'
+              .format(itr, train_recon_loss / train_n, args.alpha * train_ce_loss / train_n, cur_reg_loss,
+                      train_acc / train_n, mse / train_n, val_loss, val_acc, test_acc, test_auc))
         
         if best_val_loss * 1.2 < val_loss:
-            # print("early stop")
             break
-    # print("Best Validation Loss: ", best_val_loss)
-    # print("Test AUC at Best Validation Loss: ", best_test_auc)
-    # print(total_time)
+    
     return best_test_auc
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--niters', type=int, default=2000)
+    parser.add_argument('--niters', type=int, default=300)
     parser.add_argument('--lr', type=float, default=0.001)
     parser.add_argument('--std', type=float, default=0.01)
     parser.add_argument('--latent-dim', type=int, default=32)
@@ -173,12 +167,12 @@ if __name__ == '__main__':
     parser.add_argument('--split', type=int, default=0)
     parser.add_argument('--n', type=int, default=8000)
     parser.add_argument('--batch-size', type=int, default=50)
-    parser.add_argument('--quantization', type=float, default=0.1, 
+    parser.add_argument('--quantization', type=float, default=0.016, 
                         help="Quantization on the physionet dataset.")
     parser.add_argument('--classif', action='store_true', 
                         help="Include binary classification loss")
     parser.add_argument('--freq', type=float, default=10.)
-    parser.add_argument('--k-iwae', type=int, default=10)
+    parser.add_argument('--k-iwae', type=int, default=1)
     parser.add_argument('--norm', action='store_true')
     parser.add_argument('--kl', action='store_true')
     parser.add_argument('--learn-emb', action='store_true')
@@ -198,46 +192,36 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    param_grid = {
-        'alpha': [50, 100, 500],
-        'niters': [300],
-        'lr': [0.001, 0.0001, 0.00001],
-        'batch_size': [50],
-        'rec_hidden': [64, 128, 256, 512],
-        'gen_hidden': [50, 100, 150],
-        'latent_dim': [10, 20, 32, 64],
-        'enc': ['mtan_rnn'],
-        'dec': ['mtan_rnn'],
-        'n': [8000],
-        'quantization': [0.016],
-        'save': [1],
-        'classif': [True],
-        'norm': [True],
-        'kl': [True],
-        'learn_emb': [True],
-        'k_iwae': [1],
-        'dataset': ['physionet'],
-        'aug_ratio': [3, 7],
-        'augh1': [300],  # 추가된 파라미터 augh1
-        'augh2': [128, 256, 512]        # 추가된 파라미터 augh2
-    }
+    # Define the search space
+    search_space = [
+        Categorical([10, 50, 100, 200, 500], name='alpha'),
+        Real(1e-5, 1e-1, prior='log-uniform', name='lr'),
+        Integer(64, 512, name='rec_hidden'),
+        Integer(50, 150, name='gen_hidden'),
+        Integer(10, 64, name='latent_dim'),
+        Categorical(['mtan_rnn'], name='enc'),
+        Categorical(['mtan_rnn'], name='dec'),
+        Categorical([True], name='classif'),
+        Categorical([True], name='norm'),
+        Categorical([True], name='kl'),
+        Categorical([True], name='learn_emb'),
+        Categorical(['physionet'], name='dataset'),
+        Categorical([3, 7], name='aug_ratio'),
+        Integer(50, 500, name='augh1'),
+        Integer(128, 512, name='augh2')
+    ]
 
-    n_iter_search = 300
-    param_list = list(ParameterSampler(param_grid, n_iter=n_iter_search, random_state=args.seed))
 
-    best_score = 0
-    best_params = None
-
-    for param_set in param_list:
-        for param, value in param_set.items():
+    @use_named_args(search_space)
+    def objective(**params):
+        for param, value in params.items():
             setattr(args, param, value)
-        print(f"Running with parameters: {param_set}")
+        print(f"Running with parameters: {params}")
         best_test_auc = main(args)
-        # Assuming you save the best_test_auc in main() function
-        if best_test_auc > best_score:
-            best_score = best_test_auc
-            best_params = param_set
+        print(f"Best score: {-res.fun} with parameters: {res.x}")
 
-        print(f"Best score: {best_score} with parameters: {best_params}")
+        return -best_test_auc
 
-    print(f"Final Best score: {best_score} with parameters: {best_params}")
+    res = gp_minimize(objective, search_space, n_calls=100, random_state=args.seed)
+
+    print(f"Best score: {-res.fun} with parameters: {res.x}")
