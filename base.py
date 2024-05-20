@@ -30,15 +30,18 @@ def main(args):
     dim = data_obj["input_dim"]
     num_tp = data_obj["num_tp"]
 
+    rec_hidden = int(args.rec_hidden)
+    gen_hidden = int(args.gen_hidden)
+
     rec = models.enc_mtan_rnn(
-        dim, torch.linspace(0, 1., args.num_ref_points), args.latent_dim, args.rec_hidden, 
+        dim, torch.linspace(0, 1., args.num_ref_points), args.latent_dim, rec_hidden, 
         embed_time=args.embed_time, learn_emb=args.learn_emb, num_heads=args.enc_num_heads).to(device)
 
     dec = models.dec_mtan_rnn(
-        dim, torch.linspace(0, 1., args.num_ref_points), args.latent_dim, args.gen_hidden, 
+        dim, torch.linspace(0, 1., args.num_ref_points), args.latent_dim, gen_hidden, 
         embed_time=args.embed_time, learn_emb=args.learn_emb, num_heads=args.dec_num_heads).to(device)
         
-    classifier = models.create_classifier(args.latent_dim, args.rec_hidden).to(device)
+    classifier = models.create_classifier(args.latent_dim, rec_hidden).to(device)
 
     aug = models.TimeSeriesAugmentation(dim*2+1, args.augh1, args.augh2, dim*2+1, num_outputs=args.aug_ratio*num_tp).to(device)
     
@@ -140,9 +143,10 @@ def main(args):
             best_val_auc = val_auc
             best_test_auc = test_auc
         cur_reg_loss = args.beta * train_reg_loss / train_n
-        print('Iter: {}, recon_loss: {:.4f}, ce_loss: {:.4f}, reg_loss: {:.4f}, acc: {:.4f}, mse: {:.4f}, val_loss: {:.4f}, val_acc: {:.4f}, test_acc: {:.4f}, test_auc: {:.4f}'
-              .format(itr, train_recon_loss / train_n, args.alpha * train_ce_loss / train_n, cur_reg_loss,
-                      train_acc / train_n, mse / train_n, val_loss, val_acc, test_acc, test_auc))
+        if random.random() < 0.03:
+            print('Iter: {}, recon_loss: {:.4f}, ce_loss: {:.4f}, reg_loss: {:.4f}, acc: {:.4f}, mse: {:.4f}, val_loss: {:.4f}, val_acc: {:.4f}, test_acc: {:.4f}, test_auc: {:.4f}'
+                .format(itr, train_recon_loss / train_n, args.alpha * train_ce_loss / train_n, cur_reg_loss,
+                        train_acc / train_n, mse / train_n, val_loss, val_acc, test_acc, test_auc))
         
         if best_val_loss * 1.2 < val_loss:
             break
