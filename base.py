@@ -153,6 +153,11 @@ def main(args):
     
     return best_test_auc
 
+# Callback to print intermediate results
+def print_progress(res):
+    print(f"Current best score: {-res.fun}")
+    print(f"Best parameters so far: {res.x}")
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--niters', type=int, default=300)
@@ -223,6 +228,7 @@ if __name__ == '__main__':
         best_test_auc = main(args)
         return -best_test_auc
 
-    res = gp_minimize(objective, search_space, n_calls=100, random_state=args.seed)
+    # Perform Bayesian optimization using Gaussian Process
+    res = gp_minimize(objective, search_space, n_calls=100, random_state=args.seed, callback=[print_progress])
 
     print(f"Best score: {-res.fun} with parameters: {res.x}")
