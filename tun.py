@@ -144,9 +144,9 @@ def main(args):
             best_val_auc = val_auc
             best_test_auc = test_auc
         cur_reg_loss = args.beta * train_reg_loss / train_n
-        # print('Iter: {}, recon_loss: {:.4f}, ce_loss: {:.4f}, reg_loss: {:.4f}, acc: {:.4f}, mse: {:.4f}, val_loss: {:.4f}, val_acc: {:.4f}, test_acc: {:.4f}, test_auc: {:.4f}'
-        #       .format(itr, train_recon_loss / train_n, args.alpha * train_ce_loss / train_n, cur_reg_loss,
-        #               train_acc / train_n, mse / train_n, val_loss, val_acc, test_acc, test_auc))
+        print('Iter: {}, recon_loss: {:.4f}, ce_loss: {:.4f}, reg_loss: {:.4f}, acc: {:.4f}, mse: {:.4f}, val_loss: {:.4f}, val_acc: {:.4f}, test_acc: {:.4f}, test_auc: {:.4f}'
+              .format(itr, train_recon_loss / train_n, args.alpha * train_ce_loss / train_n, cur_reg_loss,
+                      train_acc / train_n, mse / train_n, val_loss, val_acc, test_acc, test_auc))
         
         if best_val_loss * 1.2 < val_loss:
             # print("early stop")

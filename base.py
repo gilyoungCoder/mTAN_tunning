@@ -13,7 +13,6 @@ import models
 import utils
 from setmodels import *
 
-
 def main(args):
     experiment_id = int(SystemRandom().random() * 100000)
     seed = args.seed
@@ -33,11 +32,11 @@ def main(args):
 
     rec = models.enc_mtan_rnn(
         dim, torch.linspace(0, 1., args.num_ref_points), args.latent_dim, args.rec_hidden, 
-        embed_time=128, learn_emb=args.learn_emb, num_heads=args.enc_num_heads).to(device)
+        embed_time=args.embed_time, learn_emb=args.learn_emb, num_heads=args.enc_num_heads).to(device)
 
     dec = models.dec_mtan_rnn(
         dim, torch.linspace(0, 1., args.num_ref_points), args.latent_dim, args.gen_hidden, 
-        embed_time=128, learn_emb=args.learn_emb, num_heads=args.dec_num_heads).to(device)
+        embed_time=args.embed_time, learn_emb=args.learn_emb, num_heads=args.dec_num_heads).to(device)
         
     classifier = models.create_classifier(args.latent_dim, args.rec_hidden).to(device)
 
@@ -194,8 +193,9 @@ if __name__ == '__main__':
 
     # Define the search space
     search_space = [
-        Categorical([10, 50, 100, 200, 500], name='alpha'),
-        Real(1e-5, 1e-1, prior='log-uniform', name='lr'),
+        Integer(10, 500, name='alpha'),
+        Integer(100000, 5000000, name='beta'),
+        Real(1e-5, 1e-3, prior='log-uniform', name='lr'),
         Integer(64, 512, name='rec_hidden'),
         Integer(50, 150, name='gen_hidden'),
         Integer(10, 64, name='latent_dim'),
@@ -206,11 +206,10 @@ if __name__ == '__main__':
         Categorical([True], name='kl'),
         Categorical([True], name='learn_emb'),
         Categorical(['physionet'], name='dataset'),
-        Categorical([3, 7], name='aug_ratio'),
+        Integer(3, 7, name='aug_ratio'),
         Integer(50, 500, name='augh1'),
         Integer(128, 512, name='augh2')
     ]
-
 
     @use_named_args(search_space)
     def objective(**params):
@@ -218,8 +217,6 @@ if __name__ == '__main__':
             setattr(args, param, value)
         print(f"Running with parameters: {params}")
         best_test_auc = main(args)
-        print(f"Best score: {-res.fun} with parameters: {res.x}")
-
         return -best_test_auc
 
     res = gp_minimize(objective, search_space, n_calls=100, random_state=args.seed)
